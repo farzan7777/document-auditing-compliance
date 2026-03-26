@@ -1,0 +1,161 @@
+name: document-compliance-auditing
+version: "1.0.0"
+description: >
+  An OpenEnv environment where AI agents audit real-world business documents
+  for compliance violations. Tasks include employment contract field verification,
+  invoice vs purchase order validation, and regulatory privacy policy auditing.
+  Designed for evaluating LLM-based document understanding and compliance reasoning.
+
+author: openenv-compliance
+tags:
+  - openenv
+  - compliance
+  - document-auditing
+  - legal
+  - nlp
+
+observation_space:
+  type: text
+  fields:
+    task_id:
+      type: integer
+      description: Current task ID (1, 2, or 3)
+    task_name:
+      type: string
+      description: Human-readable task name
+    document_text:
+      type: string
+      description: The business document to be audited
+    current_flags:
+      type: array
+      items: string
+      description: Violations flagged so far in this episode
+    current_confirmations:
+      type: array
+      items: string
+      description: Fields confirmed present so far
+    steps_taken:
+      type: integer
+      description: Number of steps taken in this episode
+    max_steps:
+      type: integer
+      description: Maximum steps allowed before episode ends
+    cumulative_reward:
+      type: float
+      description: Total reward accumulated so far
+    available_actions:
+      type: array
+      items: string
+      description: List of valid action types for this task
+    instructions:
+      type: string
+      description: Task-specific instructions for the agent
+
+action_space:
+  type: structured
+  actions:
+    flag_violation:
+      description: Flag a compliance violation found in the document
+      fields:
+        field:
+          type: string
+          required: true
+          description: The violation identifier or clause name
+        reason:
+          type: string
+          required: false
+          description: Explanation of why this is a violation
+        severity:
+          type: string
+          required: false
+          enum: [critical, major, minor]
+          description: Severity of the violation
+        section:
+          type: string
+          required: false
+          description: Document section where the violation was found
+    mark_field_present:
+      description: Mark a required field as present in the document (Task 1 only)
+      fields:
+        field:
+          type: string
+          required: true
+          description: Name of the required field
+    mark_field_missing:
+      description: Mark a required field as missing from the document (Task 1 only)
+      fields:
+        field:
+          type: string
+          required: true
+          description: Name of the missing field
+        reason:
+          type: string
+          required: false
+          description: Why the field is considered missing
+    submit:
+      description: Finalize the audit and trigger grading
+      fields: {}
+
+reward:
+  type: continuous
+  range: [-1.0, 1.0]
+  description: >
+    Per-step rewards for correct actions (+0.10 to +0.15),
+    false positives (-0.10), redundant actions (-0.05),
+    severity bonuses (+0.05), and submit quality bonus (+0.10).
+    Cumulative reward is clamped to [0.0, 1.0].
+
+tasks:
+  - id: 1
+    name: Required Field Detection
+    difficulty: easy
+    max_steps: 12
+    description: >
+      Audit an employment contract for 6 required fields:
+      party_a, party_b, effective_date, termination_clause,
+      governing_law, signature_block. Mark each as present or missing.
+    grader:
+      type: exact_match
+      scoring: per_field_accuracy
+      score_range: [0.0, 1.0]
+
+  - id: 2
+    name: Invoice vs Purchase Order Validation
+    difficulty: medium
+    max_steps: 20
+    description: >
+      Compare an invoice against a purchase order.
+      Detect quantity mismatches, price mismatches, wrong tax rates,
+      and missing PO references. Flag violations with correct severity.
+    grader:
+      type: f1_weighted
+      scoring: precision_recall_weighted
+      score_range: [0.0, 1.0]
+
+  - id: 3
+    name: Regulatory Policy Compliance Audit
+    difficulty: hard
+    max_steps: 30
+    description: >
+      Audit a company privacy policy for 12 required GDPR-style compliance clauses.
+      Identify missing clauses and assign correct severity (critical/major/minor).
+      Higher scores for catching critical violations with correct severity ranking.
+    grader:
+      type: weighted_coverage
+      scoring: severity_weighted_recall
+      score_range: [0.0, 1.0]
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state/{session_id}
+  grader: POST /grader
+  tasks: GET /tasks
+  baseline: POST /baseline
+  health: GET /health
+
+deployment:
+  platform: huggingface-spaces
+  sdk: docker
+  port: 7860
+  framework: fastapi
