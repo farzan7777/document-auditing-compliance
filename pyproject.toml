@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "openenv-compliance"
+version = "1.0.0"
+description = "OpenEnv Document Compliance Auditing Environment"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "openenv-compliance"}
+]
+keywords = ["openenv", "compliance", "document-auditing", "legal", "nlp"]
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "pydantic==2.9.2",
+    "python-multipart==0.0.12",
+    "openai==1.51.0",
+    "requests==2.32.3",
+    "pyyaml==6.0.2",
+]
+
+[project.urls]
+Homepage = "https://huggingface.co/spaces/aakama/openenv-compliance"
+Repository = "https://github.com/aatif13/openenv-compliance"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "baseline*"]
