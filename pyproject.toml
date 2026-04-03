@@ -1,31 +1,32 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "openenv-compliance"
 version = "1.0.0"
-description = "OpenEnv Document Compliance Auditing Environment"
-requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "openenv-compliance"}
-]
-keywords = ["openenv", "compliance", "document-auditing", "legal", "nlp"]
+description = "Document Compliance Auditing environment for OpenEnv"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "fastapi==0.115.0",
-    "uvicorn[standard]==0.30.6",
-    "pydantic==2.9.2",
-    "python-multipart==0.0.12",
-    "openai==1.51.0",
-    "requests==2.32.3",
-    "pyyaml==6.0.2",
+    "openenv-core[core]>=0.2.2",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.6",
+    "pydantic>=2.9.2",
+    "python-multipart>=0.0.12",
+    "openai>=2.7.2",
+    "requests>=2.32.3",
+    "pyyaml>=6.0.2",
 ]
 
-[project.urls]
-Homepage = "https://huggingface.co/spaces/aakama/openenv-compliance"
-Repository = "https://github.com/aatif13/openenv-compliance"
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["app*", "baseline*"]
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["app", "app.tasks", "app.graders", "app.documents", "baseline", "server"]
