@@ -21,6 +21,7 @@ from openai import OpenAI
 
 # ─── Environment Variables ────────────────────────────────────────────────────
 # CRITICAL: When validator runs it, API_BASE_URL and API_KEY will be injected
+<<<<<<< HEAD
 # We detect if these came from the validator or are just defaults
 API_BASE_URL_INJECTED = "API_BASE_URL" in os.environ
 API_KEY_INJECTED = "API_KEY" in os.environ
@@ -33,6 +34,17 @@ API_KEY      = os.environ.get("API_KEY", "")
 if not API_KEY_INJECTED:
     API_KEY = ""
 
+=======
+API_BASE_URL = os.environ.get("API_BASE_URL")
+API_KEY      = os.environ.get("API_KEY")
+
+# For local development without credentials, use sensible defaults
+if not API_BASE_URL:
+    API_BASE_URL = "https://router.huggingface.co/v1"
+if not API_KEY:
+    API_KEY = os.getenv("HF_TOKEN", "")
+
+>>>>>>> c8c00f2 (Allow local testing without credentials using mock client)
 MODEL_NAME   = os.getenv("MODEL_NAME", "nvidia/Llama-3.1-Nemotron-70B-Instruct-FP8")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 OPENENV_URL  = os.getenv("OPENENV_BASE_URL", "https://aakama-openenv-compliance.hf.space")
@@ -44,12 +56,30 @@ SEEDS       = {1: 42, 2: 42, 3: 42}
 
 # ─── OpenAI Client ────────────────────────────────────────────────────────────
 # When validator runs: API_BASE_URL and API_KEY will be injected → real client
+<<<<<<< HEAD
 # When running locally without validator: use mock client for testing
 print(f"[INFO] Initializing OpenAI client with base_url={API_BASE_URL}", flush=True)
 print(f"[INFO] Using model={MODEL_NAME}", flush=True)
 
 def _create_mock_client():
     """Create a mock OpenAI client for testing/fallback."""
+=======
+# When running locally without token: use mock client for testing
+print(f"[INFO] Initializing OpenAI client with base_url={API_BASE_URL}", flush=True)
+print(f"[INFO] Using model={MODEL_NAME}", flush=True)
+
+if API_KEY:
+    # Real credentials available - use actual OpenAI client
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY,
+    )
+    print(f"[INFO] Using real OpenAI client (credentials provided)", flush=True)
+else:
+    # No credentials - use mock client for local testing
+    print(f"[INFO] No credentials provided - using mock client for local testing", flush=True)
+    
+>>>>>>> c8c00f2 (Allow local testing without credentials using mock client)
     class MockMessage:
         def __init__(self, content):
             self.content = content
@@ -73,6 +103,7 @@ def _create_mock_client():
     class MockClient:
         chat = MockChat()
 
+<<<<<<< HEAD
     return MockClient()
 
 
@@ -93,6 +124,9 @@ else:
     # Local testing mode - use mock client
     print(f"[INFO] Local testing mode - using mock client", flush=True)
     client = _create_mock_client()
+=======
+    client = MockClient()
+>>>>>>> c8c00f2 (Allow local testing without credentials using mock client)
 
 # ─── System Prompts ───────────────────────────────────────────────────────────
 SYSTEM_PROMPTS = {
