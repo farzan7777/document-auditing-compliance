@@ -20,11 +20,22 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 
 # ─── Environment Variables ────────────────────────────────────────────────────
-API_BASE_URL     = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME       = os.getenv("MODEL_NAME", "nvidia/Llama-3.1-Nemotron-70B-Instruct-FP8")
-HF_TOKEN         = os.getenv("HF_TOKEN")
+# CRITICAL: When validator runs it, API_BASE_URL and API_KEY will be injected
+# We detect if these came from the validator or are just defaults
+API_BASE_URL_INJECTED = "API_BASE_URL" in os.environ
+API_KEY_INJECTED = "API_KEY" in os.environ
+
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+API_KEY      = os.environ.get("API_KEY", "")
+
+# Only use API_KEY if it was actually injected by validator
+# Don't use HF_TOKEN as fallback - this prevents fake tokens from breaking things
+if not API_KEY_INJECTED:
+    API_KEY = ""
+
+MODEL_NAME   = os.getenv("MODEL_NAME", "nvidia/Llama-3.1-Nemotron-70B-Instruct-FP8")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
-OPENENV_URL      = os.getenv("OPENENV_BASE_URL", "https://aakama-openenv-compliance.hf.space")
+OPENENV_URL  = os.getenv("OPENENV_BASE_URL", "https://aakama-openenv-compliance.hf.space")
 
 MAX_STEPS   = 30
 TEMPERATURE = 0.1
@@ -32,17 +43,22 @@ MAX_TOKENS  = 300
 SEEDS       = {1: 42, 2: 42, 3: 42}
 
 # ─── OpenAI Client ────────────────────────────────────────────────────────────
-try:
-    if not HF_TOKEN:
-        raise EnvironmentError("HF_TOKEN not set, using mock client for testing")
+# When validator runs: API_BASE_URL and API_KEY will be injected → real client
+# When running locally without validator: use mock client for testing
+print(f"[INFO] Initializing OpenAI client with base_url={API_BASE_URL}", flush=True)
+print(f"[INFO] Using model={MODEL_NAME}", flush=True)
 
+if API_KEY_INJECTED and API_BASE_URL_INJECTED:
+    # Validator has injected credentials and proxy endpoint - use real client
     client = OpenAI(
         base_url=API_BASE_URL,
-        api_key=HF_TOKEN,
+        api_key=API_KEY,
     )
-except Exception as e:
-    print(f"WARNING: {e} — Using mock client for local testing", flush=True)
-
+    print(f"[INFO] Using real OpenAI client (validator credentials detected)", flush=True)
+else:
+    # Local testing mode - use mock client
+    print(f"[INFO] Local testing mode - using mock client", flush=True)
+    
     class MockMessage:
         def __init__(self, content):
             self.content = content
