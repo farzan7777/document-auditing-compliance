@@ -21,26 +21,31 @@ from openai import OpenAI
 
 # ─── Environment Variables ────────────────────────────────────────────────────
 # Defaults set ONLY for API_BASE_URL and MODEL_NAME (not HF_TOKEN)
-API_BASE_URL     = os.environ["API_BASE_URL"] if "API_BASE_URL" in os.environ else os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY          = os.environ["API_KEY"] if "API_KEY" in os.environ else os.getenv("HF_TOKEN", "")
+API_BASE_URL     = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME       = os.getenv("MODEL_NAME", "nvidia/Llama-3.1-Nemotron-70B-Instruct-FP8")
+HF_TOKEN         = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 OPENENV_URL      = os.getenv("OPENENV_BASE_URL", "https://aakama-openenv-compliance.hf.space")
+
+# API_KEY: prefer API_KEY env var (injected by validator), fallback to HF_TOKEN
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or "dummy-key"
 
 MAX_STEPS   = 30
 TEMPERATURE = 0.1
 MAX_TOKENS  = 300
 SEEDS       = {1: 42, 2: 42, 3: 42}
 
-# ─── OpenAI Client (ALWAYS use injected API_BASE_URL and API_KEY) ─────────────
-from openai import OpenAI
-
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=API_KEY,
-)
-
-print(f"[INFO] base_url={API_BASE_URL} model={MODEL_NAME}", flush=True)
+# ─── OpenAI Client ────────────────────────────────────────────────────────────
+# ALWAYS initialize with API_BASE_URL and API_KEY from environment
+try:
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=API_KEY,
+    )
+    print(f"[INFO] OpenAI client initialized base_url={API_BASE_URL} model={MODEL_NAME}", flush=True)
+except Exception as e:
+    print(f"[ERROR] Failed to initialize OpenAI client: {e}", flush=True)
+    raise
 
 # ─── System Prompts ───────────────────────────────────────────────────────────
 SYSTEM_PROMPTS = {
@@ -172,16 +177,19 @@ What is your next action? Reply with JSON only.
 
     messages.append({"role": "user", "content": user_content})
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=TEMPERATURE,
-        max_tokens=MAX_TOKENS,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+        )
+        raw = response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[WARNING] LLM call failed: {e}, using submit fallback", flush=True)
+        raw = '{"action_type": "submit"}'
 
-    raw = response.choices[0].message.content.strip()
     action = parse_action(raw)
-
     history.append({"role": "user", "content": user_content})
     history.append({"role": "assistant", "content": raw})
 
@@ -192,7 +200,13 @@ What is your next action? Reply with JSON only.
 def run_task(task_id: int, seed: int) -> float:
     print(f"[START] task=task_{task_id}", flush=True)
 
-    result = env_reset(task_id=task_id, seed=seed)
+    try:
+        result = env_reset(task_id=task_id, seed=seed)
+    except Exception as e:
+        print(f"[ERROR] reset failed: {e}", flush=True)
+        print(f"[END] task=task_{task_id} score=0.0 steps=0", flush=True)
+        return 0.0
+
     session_id = result["session_id"]
     observation = result["observation"]
 
@@ -201,38 +215,48 @@ def run_task(task_id: int, seed: int) -> float:
     last_reward = 0.0
 
     for step_num in range(max_steps):
-        action = get_next_action(task_id, observation, history)
-
-        step_result = env_step(session_id=session_id, action=action)
-        observation = step_result["observation"]
-        last_reward = step_result["reward"]
-
-        print(f"[STEP] step={step_num + 1} reward={last_reward}", flush=True)
-
-        if step_result["done"]:
+        try:
+            action = get_next_action(task_id, observation, history)
+            step_result = env_step(session_id=session_id, action=action)
+            observation = step_result["observation"]
+            last_reward = step_result["reward"]
+            print(f"[STEP] step={step_num + 1} reward={last_reward}", flush=True)
+            if step_result["done"]:
+                break
+        except Exception as e:
+            print(f"[WARNING] step {step_num+1} failed: {e}", flush=True)
             break
 
-    grade_result = env_grade(session_id=session_id)
-    score = grade_result["score"]
-    total_steps = grade_result["total_steps"]
+    try:
+        grade_result = env_grade(session_id=session_id)
+        score = grade_result["score"]
+        total_steps = grade_result["total_steps"]
+    except Exception as e:
+        print(f"[WARNING] grading failed: {e}", flush=True)
+        score = 0.0
+        total_steps = step_num + 1
 
     print(f"[END] task=task_{task_id} score={score} steps={total_steps}", flush=True)
-
     return score
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     try:
-        r = requests.get(f"{OPENENV_URL}/health")
+        r = requests.get(f"{OPENENV_URL}/health", timeout=10)
         r.raise_for_status()
+        print(f"[INFO] Environment reachable at {OPENENV_URL}", flush=True)
     except Exception as e:
-        print(f"[ERROR] message=Environment_not_reachable details={e}", flush=True)
+        print(f"[ERROR] Environment not reachable: {e}", flush=True)
         return
 
     scores = {}
     for task_id, seed in SEEDS.items():
-        score = run_task(task_id=task_id, seed=seed)
+        try:
+            score = run_task(task_id=task_id, seed=seed)
+        except Exception as e:
+            print(f"[ERROR] task_{task_id} failed: {e}", flush=True)
+            score = 0.0
         scores[f"task_{task_id}"] = score
 
     average = sum(scores.values()) / len(scores)
@@ -250,7 +274,6 @@ def main():
         json.dump(output, f, indent=2)
 
     print(f"[SUMMARY] average_score={round(average, 4)} model={MODEL_NAME}", flush=True)
-
     return output
 
 
