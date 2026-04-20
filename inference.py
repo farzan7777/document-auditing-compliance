@@ -314,3 +314,222 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW MULTI-AGENT FUNCTIONS BELOW
+# Everything above this line is 100% UNCHANGED from original
+# These new functions show Theme #1 + #4 in action
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ─── New Multi-Agent API Helpers ──────────────────────────────────────────────
+
+def env_multi_reset(task_id: int, seed: int) -> Dict[str, Any]:
+    """
+    NEW — Calls /multi/reset instead of /reset.
+    Returns difficulty level + curriculum stats alongside observation.
+    """
+    r = requests.post(
+        f"{OPENENV_URL}/multi/reset",
+        params={"task_id": task_id, "seed": seed},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def env_multi_grade(session_id: str) -> Dict[str, Any]:
+    """
+    NEW — Calls /multi/grade instead of /grader.
+    Returns both auditor + verifier scores and all decisions.
+    """
+    r = requests.post(
+        f"{OPENENV_URL}/multi/grade",
+        params={"session_id": session_id},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def env_curriculum_stats() -> Dict[str, Any]:
+    """
+    NEW — Gets current curriculum stats.
+    Shows judges the difficulty progression.
+    """
+    r = requests.get(
+        f"{OPENENV_URL}/curriculum/stats",
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# ─── Multi-Agent Episode Runner ───────────────────────────────────────────────
+
+def run_task_multi(task_id: int, seed: int) -> Dict[str, Any]:
+    """
+    NEW — Runs one episode with full multi-agent system.
+
+    Shows:
+    1. Curriculum decides difficulty level
+    2. Auditor agent reads document and flags violations
+    3. Verifier agent checks auditor findings
+    4. Both agents get scored
+    5. Curriculum records score for next episode
+
+    This is the function judges run to see Theme #1 + #4 working.
+    """
+
+    # ✅ Required [START] block — same format as original
+    print(f"[START] task=task_{task_id}", flush=True)
+
+    # ── Step 1: Multi-agent reset (shows curriculum level) ────────────────────
+    result = env_multi_reset(task_id=task_id, seed=seed)
+    session_id = result["session_id"]
+    observation = result["observation"]
+    difficulty = result.get("difficulty_level", 1)
+    level_name = result.get("level_name", "Level 1")
+
+    print(f"[CURRICULUM] difficulty={difficulty} level={level_name}", flush=True)
+
+    # ── Step 2: Auditor agent acts (same as original run_task) ────────────────
+    history = []
+    max_steps = min(observation["max_steps"], MAX_STEPS)
+    last_reward = 0.0
+
+    for step_num in range(max_steps):
+        action = get_next_action(task_id, observation, history)
+
+        step_result = env_step(session_id=session_id, action=action)
+        observation = step_result["observation"]
+        last_reward = step_result["reward"]
+
+        # ✅ Required [STEP] block — same format as original
+        print(f"[STEP] step={step_num + 1} reward={last_reward}", flush=True)
+
+        if step_result["done"]:
+            break
+
+    # ── Step 3: Get multi-agent grade (verifier checks auditor) ───────────────
+    try:
+        multi_result = env_multi_grade(session_id=session_id)
+
+        auditor_score  = multi_result.get("auditor_score", 0.0)
+        verifier_score = multi_result.get("verifier_score", 0.0)
+        combined_score = multi_result.get("combined_score", 0.0)
+        decisions      = multi_result.get("verifier_decisions", [])
+        summary        = multi_result.get("verifier_summary", {})
+        feedback       = multi_result.get("feedback", "")
+
+        # Print multi-agent results clearly for judges
+        print(f"[AUDITOR]  score={auditor_score}", flush=True)
+        print(f"[VERIFIER] score={verifier_score}", flush=True)
+        print(f"[COMBINED] score={combined_score}", flush=True)
+        print(f"[FEEDBACK] {feedback}", flush=True)
+
+        # Print verifier decisions so judges see Theme #1 working
+        print(f"[VERIFIER] checked={summary.get('total_checked', 0)} "
+              f"approved={summary.get('approved', 0)} "
+              f"rejected={summary.get('rejected', 0)} "
+              f"hallucinations_caught={summary.get('hallucinations_caught', 0)}",
+              flush=True)
+
+        # Print each verifier decision
+        for d in decisions:
+            symbol = "✅" if d["decision"] == "APPROVE" else "❌"
+            print(f"[VERIFIER] {symbol} {d['decision']} {d['finding']} — {d['reason']}", flush=True)
+
+        total_steps = multi_result.get("total_steps", step_num + 1)
+
+    except Exception as e:
+        # If multi grade fails fall back to regular grade
+        print(f"[WARN] Multi grade failed: {e} — using regular grade", flush=True)
+        grade_result = env_grade(session_id=session_id)
+        combined_score = grade_result["score"]
+        total_steps = grade_result["total_steps"]
+        multi_result = {"combined_score": combined_score}
+
+    # ✅ Required [END] block — same format as original
+    print(f"[END] task=task_{task_id} score={combined_score} steps={total_steps}", flush=True)
+
+    return {
+        "task_id": task_id,
+        "seed": seed,
+        "difficulty_level": difficulty,
+        "combined_score": combined_score,
+        "multi_result": multi_result,
+    }
+
+
+# ─── Multi-Agent Main ─────────────────────────────────────────────────────────
+
+def main_multi():
+    """
+    NEW — Runs all 3 tasks with full multi-agent system.
+
+    This is the multi-agent version of main().
+    Shows Theme #1 (multi-agent) + Theme #4 (curriculum) working together.
+
+    Judges run this to see:
+    - Curriculum difficulty progression
+    - Auditor + Verifier scores for each task
+    - Verifier catching hallucinations
+    - Combined reward curves
+    """
+
+    # Verify environment is reachable
+    try:
+        r = requests.get(f"{OPENENV_URL}/health", timeout=15)
+        r.raise_for_status()
+        print("[INFO] OpenEnv health check passed.", flush=True)
+    except Exception as e:
+        print(f"[ERROR] OpenEnv not reachable: {e}", flush=True)
+        raise
+
+    # Show curriculum stats before starting
+    try:
+        stats = env_curriculum_stats()
+        print(f"[CURRICULUM] Starting at Level {stats['current_level']} "
+              f"({stats['level_name']})", flush=True)
+    except Exception as e:
+        print(f"[WARN] Could not get curriculum stats: {e}", flush=True)
+
+    # Run all 3 tasks with multi-agent system
+    results = {}
+    for task_id, seed in SEEDS.items():
+        result = run_task_multi(task_id=task_id, seed=seed)
+        results[f"task_{task_id}"] = result
+
+    # Calculate average combined score
+    scores = [r["combined_score"] for r in results.values()]
+    average = round(sum(scores) / len(scores), 4)
+
+    # Show final curriculum stats after all tasks
+    try:
+        final_stats = env_curriculum_stats()
+        print(f"[CURRICULUM] Final Level: {final_stats['current_level']} "
+              f"Rolling Average: {final_stats['rolling_average']}", flush=True)
+    except Exception as e:
+        print(f"[WARN] Could not get final curriculum stats: {e}", flush=True)
+
+    # Build output
+    output = {
+        "model": MODEL_NAME,
+        "api_base_url": API_BASE_URL,
+        "environment": OPENENV_URL,
+        "mode": "multi_agent",
+        "themes": ["1_multi_agent", "3.1_professional", "4_self_improvement"],
+        "seeds": SEEDS,
+        "results": results,
+        "average_combined_score": average,
+    }
+
+    # Save results
+    with open("multi_agent_scores.json", "w") as f:
+        json.dump(output, f, indent=2)
+
+    print(f"[SUMMARY] average_combined_score={average} model={MODEL_NAME}", flush=True)
+
+    return output

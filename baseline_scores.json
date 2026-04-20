@@ -1,0 +1,16 @@
+{
+  "model": "nvidia/Llama-3.1-Nemotron-70B-Instruct-FP8",
+  "api_base_url": "https://router.huggingface.co/v1",
+  "environment": "https://aakama-openenv-compliance.hf.space",
+  "seeds": {
+    "1": 42,
+    "2": 42,
+    "3": 42
+  },
+  "scores": {
+    "task_1": 0.5,
+    "task_2": 0.5,
+    "task_3": 0.5
+  },
+  "average_score": 0.5
+}

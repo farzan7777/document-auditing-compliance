@@ -43,5 +43,5 @@ def get_task_info() -> Dict[str, Any]:
     }
 
 
-def generate_episode(seed: int = 42) -> Tuple[str, Dict[str, bool]]:
-    return generate_contract(seed=seed)
+def generate_episode(seed: int = 42, difficulty: int = 1) -> Tuple[str, Dict[str, bool]]:
+    return generate_contract(seed=seed, difficulty=difficulty)

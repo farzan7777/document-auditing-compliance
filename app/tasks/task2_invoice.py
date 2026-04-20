@@ -45,5 +45,5 @@ def get_task_info() -> Dict[str, Any]:
     }
 
 
-def generate_episode(seed: int = 42) -> Tuple[str, str, Dict[str, Any]]:
-    return generate_invoice_pair(seed=seed)
+def generate_episode(seed: int = 42, difficulty: int = 1) -> Tuple[str, str, Dict[str, Any]]:
+    return generate_invoice_pair(seed=seed, difficulty=difficulty)
