@@ -5,6 +5,12 @@ from app.tasks import task1_fields, task2_invoice, task3_policy
 from app.graders import grader1, grader2, grader3
 from app.rewards import compute_step_reward
 
+# ─── NEW IMPORTS (Theme 4 + Theme 1) ─────────────────────────────────────────
+# These connect curriculum, verifier, and verifier_grader to env
+from app.curriculum import curriculum
+from app.agents.verifier import verifier
+from app.graders.verifier_grader import grade_multi_agent
+
 # ─── In-memory session store ──────────────────────────────────────────────────
 # Key: session_id, Value: session dict
 _sessions: Dict[str, Dict[str, Any]] = {}
@@ -22,8 +28,13 @@ def reset(task_id: int, seed: Optional[int] = None) -> Tuple[str, Observation]:
 
     session_id = _make_session_id()
 
+    # ─── NEW: Ask curriculum what difficulty to use (Theme 4) ─────────────────
+    # curriculum watches scores and decides level 1-5
+    difficulty = curriculum.get_difficulty()
+
     if task_id == 1:
-        doc, ground_truth = task1_fields.generate_episode(seed=seed)
+        # ─── UPDATED: pass difficulty to generator ─────────────────────────────
+        doc, ground_truth = task1_fields.generate_episode(seed=seed, difficulty=difficulty)
         session = {
             "task_id": 1,
             "task_name": task1_fields.TASK_NAME,
@@ -39,10 +50,12 @@ def reset(task_id: int, seed: Optional[int] = None) -> Tuple[str, Observation]:
             "cumulative_reward": 0.0,
             "done": False,
             "seed": seed,
+            "difficulty": difficulty,  # NEW: store difficulty in session
         }
 
     elif task_id == 2:
-        po_doc, inv_doc, ground_truth = task2_invoice.generate_episode(seed=seed)
+        # ─── UPDATED: pass difficulty to generator ─────────────────────────────
+        po_doc, inv_doc, ground_truth = task2_invoice.generate_episode(seed=seed, difficulty=difficulty)
         combined_doc = f"--- PURCHASE ORDER ---\n{po_doc}\n\n--- INVOICE ---\n{inv_doc}"
         session = {
             "task_id": 2,
@@ -59,10 +72,12 @@ def reset(task_id: int, seed: Optional[int] = None) -> Tuple[str, Observation]:
             "cumulative_reward": 0.0,
             "done": False,
             "seed": seed,
+            "difficulty": difficulty,  # NEW: store difficulty in session
         }
 
     elif task_id == 3:
-        doc, ground_truth = task3_policy.generate_episode(seed=seed)
+        # ─── UPDATED: pass difficulty to generator ─────────────────────────────
+        doc, ground_truth = task3_policy.generate_episode(seed=seed, difficulty=difficulty)
         session = {
             "task_id": 3,
             "task_name": task3_policy.TASK_NAME,
@@ -78,6 +93,7 @@ def reset(task_id: int, seed: Optional[int] = None) -> Tuple[str, Observation]:
             "cumulative_reward": 0.0,
             "done": False,
             "seed": seed,
+            "difficulty": difficulty,  # NEW: store difficulty in session
         }
     else:
         raise ValueError(f"Invalid task_id: {task_id}. Must be 1, 2, or 3.")
@@ -89,6 +105,7 @@ def reset(task_id: int, seed: Optional[int] = None) -> Tuple[str, Observation]:
 
 def step(session_id: str, action: Action) -> StepResponse:
     """Process one agent action and return observation + reward."""
+    # ─── THIS FUNCTION IS COMPLETELY UNCHANGED ────────────────────────────────
     if session_id not in _sessions:
         raise KeyError(f"Session {session_id} not found. Call /reset first.")
 
@@ -149,6 +166,7 @@ def step(session_id: str, action: Action) -> StepResponse:
 
 def state(session_id: str) -> Dict[str, Any]:
     """Return current session state."""
+    # ─── THIS FUNCTION IS COMPLETELY UNCHANGED ────────────────────────────────
     if session_id not in _sessions:
         raise KeyError(f"Session {session_id} not found.")
     session = _sessions[session_id]
@@ -164,11 +182,13 @@ def state(session_id: str) -> Dict[str, Any]:
         "confirmations": session["confirmations"],
         "missing_confirmed": session["missing_confirmed"],
         "seed": session["seed"],
+        "difficulty": session.get("difficulty", 1),  # NEW: show difficulty in state
     }
 
 
 def grade(session_id: str) -> GraderResponse:
     """Run the grader on a completed episode."""
+    # ─── ORIGINAL GRADING LOGIC — COMPLETELY UNCHANGED ───────────────────────
     if session_id not in _sessions:
         raise KeyError(f"Session {session_id} not found.")
 
@@ -199,6 +219,34 @@ def grade(session_id: str) -> GraderResponse:
     else:
         raise ValueError(f"Unknown task_id: {task_id}")
 
+    # ─── NEW: Run verifier + multi-agent grading (Theme 1 + 4) ───────────────
+    # Step 1: Call verifier to check auditor's work
+    verifier_decisions = verifier.verify(
+        task_id=task_id,
+        document=session["document"],
+        auditor_findings=session["flags_raised"],
+        session=session,
+    )
+
+    # Step 2: Score both agents together
+    multi_result = grade_multi_agent(
+        task_id=task_id,
+        session=session,
+        verifier_decisions=verifier_decisions,
+        ground_truth=ground_truth,
+    )
+
+    # Step 3: Tell curriculum this episode's score (Theme 4)
+    # Use combined score so curriculum sees full picture
+    curriculum.record_score(multi_result["combined_score"])
+
+    # Step 4: Store multi-agent results in session for API access
+    session["verifier_decisions"] = verifier_decisions
+    session["multi_agent_result"] = multi_result
+
+    # ─── RETURN ORIGINAL GraderResponse — UNCHANGED ──────────────────────────
+    # We keep returning the same format judges expect
+    # Multi-agent data available via /multi/grade endpoint
     return GraderResponse(
         task_id=task_id,
         task_name=session["task_name"],
@@ -212,7 +260,45 @@ def grade(session_id: str) -> GraderResponse:
     )
 
 
+def grade_multi(session_id: str) -> Dict[str, Any]:
+    """
+    NEW FUNCTION — Returns full multi-agent grading results.
+    Called by /multi/grade endpoint.
+    Shows auditor score, verifier score, combined score,
+    verifier decisions, and curriculum stats.
+    """
+    if session_id not in _sessions:
+        raise KeyError(f"Session {session_id} not found.")
+
+    session = _sessions[session_id]
+
+    # If grade() hasn't been called yet, call it now
+    if "multi_agent_result" not in session:
+        grade(session_id)
+
+    multi_result = session.get("multi_agent_result", {})
+    verifier_decisions = session.get("verifier_decisions", [])
+    verifier_summary = verifier.get_summary(verifier_decisions)
+
+    return {
+        "session_id": session_id,
+        "task_id": session["task_id"],
+        "task_name": session["task_name"],
+        "difficulty_level": session.get("difficulty", 1),
+        "auditor_score": multi_result.get("auditor_score", 0.0),
+        "verifier_score": multi_result.get("verifier_score", 0.0),
+        "combined_score": multi_result.get("combined_score", 0.0),
+        "feedback": multi_result.get("feedback", ""),
+        "verifier_decisions": verifier_decisions,
+        "verifier_summary": verifier_summary,
+        "auditor_breakdown": multi_result.get("auditor_breakdown", []),
+        "verifier_breakdown": multi_result.get("verifier_breakdown", []),
+        "curriculum": curriculum.get_stats(),
+    }
+
+
 def _build_observation(session: Dict[str, Any]) -> Observation:
+    # ─── THIS FUNCTION IS COMPLETELY UNCHANGED ────────────────────────────────
     return Observation(
         task_id=session["task_id"],
         task_name=session["task_name"],

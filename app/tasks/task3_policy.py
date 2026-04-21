@@ -59,5 +59,5 @@ def get_task_info() -> Dict[str, Any]:
     }
 
 
-def generate_episode(seed: int = 42) -> Tuple[str, Dict[str, Any]]:
-    return generate_policy(seed=seed)
+def generate_episode(seed: int = 42, difficulty: int = 1) -> Tuple[str, Dict[str, Any]]:
+    return generate_policy(seed=seed, difficulty=difficulty)
