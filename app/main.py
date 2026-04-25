@@ -62,6 +62,10 @@ async def custom_docs():
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root():
+    # Hackathon Demo Feature: Reset curriculum to Level 1 on page refresh
+    from app.curriculum import curriculum
+    curriculum.reset_for_demo()
+    
     with open("static/index.html", "r") as f:
         return HTMLResponse(content=f.read())
 

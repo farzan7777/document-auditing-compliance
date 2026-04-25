@@ -5,6 +5,7 @@ from app.models import Action, ActionType, Observation, Reward, StepResponse, Gr
 from app.tasks import task1_fields, task2_invoice, task3_policy
 from app.graders import grader1, grader2, grader3
 from app.rewards import compute_step_reward
+from app.graders.score_transform import reward_to_score
 
 # ─── NEW IMPORTS (Theme 4 + Theme 1) ─────────────────────────────────────────
 # These connect curriculum, verifier, and verifier_grader to env
@@ -265,13 +266,20 @@ def grade(session_id: str, record_curriculum: bool = True) -> GraderResponse:
         session["verifier_decisions"] = verifier_decisions
         session["multi_agent_result"] = multi_result
 
-        # ─── RETURN ORIGINAL GraderResponse — UNCHANGED ──────────────────────────
-        # We keep returning the same format judges expect
-        # Multi-agent data available via /multi/grade endpoint
+        # ─── SINGLE SOURCE OF TRUTH: final_score = reward_to_score(cumulative_reward)
+        # The graders above run for breakdown/feedback diagnostics only.
+        # The authoritative score is derived solely from cumulative_reward so that:
+        #   - score never exceeds reward
+        #   - reward 0.15 → score 0.15  (not 0.75 from independent F-score)
+        #   - reward 0.5  → score 0.5
+        #   - reward 1.0  → score 1.0
+        #   - monotonic:  reward_A >= reward_B → score_A >= score_B  ALWAYS
+        final_score = reward_to_score(session["cumulative_reward"])
+
         return GraderResponse(
             task_id=task_id,
             task_name=session["task_name"],
-            score=result["score"],
+            score=final_score,
             breakdown=result["breakdown"],
             feedback=result["feedback"],
             total_steps=session["steps_taken"],

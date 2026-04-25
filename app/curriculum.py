@@ -45,10 +45,10 @@ class Curriculum:
         self.window_size = 10
  
         # Agent must score above this to move UP
-        self.upgrade_threshold = 0.85
+        self.upgrade_threshold = 0.40
  
         # Agent must score below this to move DOWN
-        self.downgrade_threshold = 0.40
+        self.downgrade_threshold = 0.20
  
         # Track total episodes seen
         self.total_episodes = 0
@@ -99,36 +99,30 @@ class Curriculum:
         # Calculate rolling average
         average = sum(self.recent_scores) / len(self.recent_scores)
  
-        # Should we go UP?
-        if average > self.upgrade_threshold and self.current_level < 5:
-            old_level = self.current_level
-            self.current_level += 1              # increase difficulty
-            self.episodes_at_current_level = 0   # reset counter
-            self.recent_scores = []              # reset scores for new level
+        old_level = int(self.current_level)
  
-            # Record this change for judges to see
+        if average > self.upgrade_threshold:
+            new_level = min(old_level + 1, 5)
+        elif average < self.downgrade_threshold:
+            new_level = max(old_level - 1, 1)
+        else:
+            new_level = old_level
+            
+        if new_level != old_level:
+            self.current_level = new_level
+            self.episodes_at_current_level = 0
+            self.recent_scores = []
+            
+            direction = "UP" if new_level > old_level else "DOWN"
+            threshold = self.upgrade_threshold if direction == "UP" else self.downgrade_threshold
+            word = "exceeded" if direction == "UP" else "below"
+            
             self.level_history.append({
                 "episode": self.total_episodes,
                 "from_level": old_level,
                 "to_level": self.current_level,
-                "reason": f"Rolling average {round(average, 3)} exceeded {self.upgrade_threshold}",
-                "direction": "UP"
-            })
- 
-        # Should we go DOWN?
-        elif average < self.downgrade_threshold and self.current_level > 1:
-            old_level = self.current_level
-            self.current_level -= 1              # decrease difficulty
-            self.episodes_at_current_level = 0   # reset counter
-            self.recent_scores = []              # reset scores for new level
- 
-            # Record this change
-            self.level_history.append({
-                "episode": self.total_episodes,
-                "from_level": old_level,
-                "to_level": self.current_level,
-                "reason": f"Rolling average {round(average, 3)} below {self.downgrade_threshold}",
-                "direction": "DOWN"
+                "reason": f"Rolling average {round(average, 3)} {word} {threshold}",
+                "direction": direction
             })
  
         # Otherwise stay at same level — agent still learning
