@@ -725,7 +725,6 @@ def run_baseline_internal(seeds: Optional[Dict[int, int]] = None) -> Dict[str, A
     for task_id, seed in seeds.items():
         session_id, observation = env.reset(task_id=task_id, seed=seed)
         score = _run_rule_based_for_task(task_id, session_id, observation)
-        curriculum.record_score(score)
 
         scores[f"task_{task_id}"] = score
         state = env.state(session_id)
@@ -739,6 +738,7 @@ def run_baseline_internal(seeds: Optional[Dict[int, int]] = None) -> Dict[str, A
         }
 
     average = round(sum(scores.values()) / len(scores), 4)
+    curriculum.record_score(average)
     return {
         "scores": scores,
         "details": details,
@@ -850,7 +850,6 @@ def run_llm_agent(seeds: Optional[Dict[int, int]] = None) -> Dict[str, Any]:
 
     for tid in (1, 2, 3):
         row = rows_by_tid[tid]
-        curriculum.record_score(row["score"])
         scores[row["task_key"]] = row["score"]
         details[row["task_key"]] = row["details"]
         if row.get("error"):
@@ -858,6 +857,7 @@ def run_llm_agent(seeds: Optional[Dict[int, int]] = None) -> Dict[str, Any]:
             errors[row["task_key"]] = row["error"]
 
     average = round(sum(scores.values()) / len(scores), 4)
+    curriculum.record_score(average)
     elapsed = round(time.perf_counter() - t0, 2)
     result = {
         "scores": scores,
