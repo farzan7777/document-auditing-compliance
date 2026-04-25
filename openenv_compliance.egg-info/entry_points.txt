@@ -1,0 +1,2 @@
+[console_scripts]
+server = openenv_compliance.server.app:main

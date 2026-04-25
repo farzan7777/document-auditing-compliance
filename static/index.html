@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OpenEnv · Document Compliance Auditing</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #0f1318;
+    --surface2: #161b24;
+    --border: #1e2736;
+    --border2: #253040;
+    --accent: #00d4ff;
+    --accent2: #0099cc;
+    --green: #00e676;
+    --yellow: #ffcc00;
+    --red: #ff4444;
+    --orange: #ff8c00;
+    --text: #e8edf4;
+    --text2: #8a9bb0;
+    --text3: #4a5a6e;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* === GRID BACKGROUND === */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* === SCANLINE === */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* === HEADER === */
+  header {
+    padding: 36px 0 28px;
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 36px;
+  }
+
+  .badge-env {
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 4px 10px;
+    text-transform: uppercase;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+
+  .header-text h1 {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+
+  .header-text h1 span { color: var(--accent); }
+
+  .header-text p {
+    margin-top: 6px;
+    font-size: 14px;
+    color: var(--text2);
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.5;
+  }
+
+  .header-links {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  .link-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    text-decoration: none;
+    padding: 4px 12px;
+    border: 1px solid var(--border2);
+    background: var(--surface);
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+
+  .link-pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* === STATUS BAR === */
+  .status-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+
+  .stat-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .stat-chip .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .stat-chip .dot.yellow { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .stat-chip .dot.blue { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+  .stat-chip .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .stat-chip .value {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--text);
+    margin-top: 2px;
+  }
+
+  /* === SECTION TITLE === */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .section-head h2 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+
+  .section-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* === TASKS GRID === */
+  .tasks-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .task-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .task-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .task-card:hover { border-color: var(--border2); }
+  .task-card:hover::before { opacity: 1; }
+  .task-card.active { border-color: var(--accent); background: rgba(0,212,255,0.04); }
+  .task-card.active::before { opacity: 1; }
+
+  .task-card .task-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .task-card .task-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .task-card .task-desc {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+
+  .difficulty-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .diff-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .diff-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--border2);
+  }
+
+  .diff-dot.on { background: var(--accent); }
+  .task-card.med .diff-dot.on { background: var(--yellow); }
+  .task-card.hard .diff-dot.on { background: var(--red); }
+
+  .diff-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* === ENV CONSOLE === */
+  .env-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .panel-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .panel-box .panel-header {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-box .panel-header .panel-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    flex: 1;
+  }
+
+  .panel-body { padding: 16px; }
+
+  /* === REWARD TABLE === */
+  .reward-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .reward-table tr {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .reward-table tr:last-child { border-bottom: none; }
+
+  .reward-table td {
+    padding: 9px 0;
+    vertical-align: middle;
+  }
+
+  .reward-table td:first-child {
+    color: var(--text2);
+    font-size: 11px;
+    padding-right: 12px;
+  }
+
+  .reward-table td:last-child {
+    text-align: right;
+    font-weight: 700;
+  }
+
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .neu { color: var(--yellow); }
+
+  /* === LIVE TERMINAL === */
+  .terminal {
+    background: #050709;
+    border: 1px solid var(--border);
+    padding: 0;
+    overflow: hidden;
+    margin-bottom: 36px;
+  }
+
+  .terminal-bar {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 9px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .terminal-bar .dots {
+    display: flex;
+    gap: 6px;
+  }
+
+  .terminal-bar .dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .dot-r { background: #ff5f56; }
+  .dot-y { background: #ffbd2e; }
+  .dot-g { background: #27c93f; }
+
+  .terminal-bar .t-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .terminal-body {
+    padding: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+    min-height: 180px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .t-line { display: flex; gap: 12px; }
+  .t-prompt { color: var(--accent); flex-shrink: 0; }
+  .t-cmd { color: var(--text2); }
+  .t-out { color: var(--text3); padding-left: 24px; }
+  .t-json { color: #7ec8e3; padding-left: 24px; }
+  .t-key { color: var(--accent); }
+  .t-val { color: var(--green); }
+  .t-str { color: #ffd580; }
+  .t-num { color: #f78c6c; }
+  .t-success { color: var(--green); padding-left: 24px; font-weight: 700; }
+  .t-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    background: var(--accent);
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* === CURRICULUM === */
+  .curriculum-track {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-bottom: 36px;
+  }
+
+  .levels {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-top: 16px;
+  }
+
+  .level-node {
+    flex: 1;
+    text-align: center;
+    position: relative;
+  }
+
+  .level-node:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    background: var(--border2);
+    z-index: 0;
+  }
+
+  .level-node.done:not(:last-child)::after {
+    background: var(--accent);
+    opacity: 0.4;
+  }
+
+  .level-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--border2);
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    margin: 0 auto 8px;
+    position: relative;
+    z-index: 1;
+    transition: all 0.3s;
+  }
+
+  .level-node.done .level-circle {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(0,212,255,0.3);
+  }
+
+  .level-node.current .level-circle {
+    border-color: var(--green);
+    color: var(--green);
+    box-shadow: 0 0 16px rgba(0,230,118,0.4);
+    animation: pulse 2s infinite;
+  }
+
+  .level-name {
+    font-size: 10px;
+    color: var(--text3);
+    line-height: 1.3;
+  }
+
+  .level-node.done .level-name { color: var(--text2); }
+  .level-node.current .level-name { color: var(--green); }
+
+  /* === MULTI-AGENT === */
+  .agent-flow {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-bottom: 36px;
+  }
+
+  .agent-boxes {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-top: 16px;
+  }
+
+  .agent-box {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 16px;
+    text-align: center;
+    position: relative;
+  }
+
+  .agent-box .a-icon { font-size: 24px; margin-bottom: 8px; }
+
+  .agent-box .a-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+
+  .agent-box .a-desc {
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.4;
+  }
+
+  .agent-arrow {
+    width: 48px;
+    flex-shrink: 0;
+    text-align: center;
+    position: relative;
+  }
+
+  .arrow-line {
+    height: 2px;
+    background: var(--border2);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .arrow-line::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: flow 2s linear infinite;
+  }
+
+  @keyframes flow {
+    0% { left: -60%; }
+    100% { left: 110%; }
+  }
+
+  .arrow-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text3);
+    text-align: center;
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  /* === API ENDPOINTS === */
+  .endpoints {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 36px;
+  }
+
+  .endpoint-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+    transition: background 0.15s;
+  }
+
+  .endpoint-row:last-child { border-bottom: none; }
+  .endpoint-row:hover { background: var(--surface2); }
+
+  .method-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 13px 14px;
+    min-width: 60px;
+    text-align: center;
+    border-right: 1px solid var(--border);
+  }
+
+  .method-post { color: var(--green); background: rgba(0,230,118,0.04); }
+  .method-get { color: var(--accent); background: rgba(0,212,255,0.04); }
+
+  .ep-path {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    padding: 13px 16px;
+    flex: 1;
+    border-right: 1px solid var(--border);
+  }
+
+  .ep-desc {
+    font-size: 12px;
+    color: var(--text2);
+    padding: 13px 16px;
+    flex: 1.5;
+  }
+
+  /* === TRY IT OUT === */
+  .try-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 36px;
+  }
+
+  .try-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    min-width: 70px;
+    text-transform: uppercase;
+  }
+
+  select, input {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border 0.2s;
+    min-width: 160px;
+  }
+
+  select:focus, input:focus { border-color: var(--accent); }
+
+  button.btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 9px 20px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+
+  .btn-primary:hover { background: #33ddff; box-shadow: 0 0 16px rgba(0,212,255,0.4); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border2);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .try-output {
+    background: #050709;
+    border: 1px solid var(--border);
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    min-height: 80px;
+    max-height: 260px;
+    overflow-y: auto;
+    margin-top: 4px;
+  }
+
+  .try-output .out-placeholder { color: var(--text3); }
+
+  .score-display {
+    display: none;
+    gap: 24px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .score-display.visible { display: flex; flex-wrap: wrap; }
+
+  .score-item { text-align: center; }
+
+  .score-item .s-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .score-item .s-val {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--green);
+  }
+
+  .progress-ring-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .progress-ring-wrap .ring-label {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  /* === SCROLLBAR === */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* === RESPONSIVE === */
+  @media (max-width: 768px) {
+    .tasks-grid { grid-template-columns: 1fr; }
+    .env-panel { grid-template-columns: 1fr; }
+    header { flex-wrap: wrap; }
+    .header-links { margin-left: 0; flex-direction: row; flex-wrap: wrap; }
+    .agent-boxes { flex-direction: column; }
+    .agent-arrow { transform: rotate(90deg); }
+    .levels { flex-direction: column; gap: 8px; }
+    .level-node:not(:last-child)::after { display: none; }
+  }
+
+  /* === ENTRY ANIMATION === */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeIn 0.5s ease forwards;
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-in:nth-child(1) { animation-delay: 0.05s; }
+  .fade-in:nth-child(2) { animation-delay: 0.12s; }
+  .fade-in:nth-child(3) { animation-delay: 0.18s; }
+  .fade-in:nth-child(4) { animation-delay: 0.24s; }
+  .fade-in:nth-child(5) { animation-delay: 0.30s; }
+  .fade-in:nth-child(6) { animation-delay: 0.36s; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header class="fade-in">
+    <div class="badge-env">OpenEnv</div>
+    <div class="header-text">
+      <h1>📋 <span>Document</span> Compliance Auditing</h1>
+      <p>Teaching LLMs to audit contracts, invoices &amp; privacy policies the way compliance professionals do.</p>
+    </div>
+    <div class="header-links">
+      <a href="/docs" class="link-pill">⚡ Swagger UI</a>
+      <a href="https://github.com/aatif13/openenv-compliance" target="_blank" class="link-pill">⌥ GitHub</a>
+      <a href="/openenv.yaml" class="link-pill">⎇ openenv.yaml</a>
+    </div>
+  </header>
+
+  <!-- STATUS BAR -->
+  <div class="status-bar fade-in">
+    <div class="stat-chip">
+      <div class="dot"></div>
+      <div>
+        <div class="label">Status</div>
+        <div class="value" id="srv-status">Checking…</div>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <div class="dot blue"></div>
+      <div>
+        <div class="label">Version</div>
+        <div class="value" id="srv-version">—</div>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <div class="dot yellow"></div>
+      <div>
+        <div class="label">Tasks</div>
+        <div class="value" id="srv-tasks">—</div>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <div class="dot blue"></div>
+      <div>
+        <div class="label">Validator</div>
+        <div class="value">6/6 ✓</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASKS -->
+  <div class="fade-in">
+    <div class="section-head"><h2>Environment Tasks</h2></div>
+    <div class="tasks-grid">
+      <div class="task-card active" onclick="selectTask(1, this)">
+        <div class="task-num">TASK_01</div>
+        <div class="task-title">Employment Contract Audit</div>
+        <div class="task-desc">Identify 6 required fields: parties, dates, compensation, termination, confidentiality, governing law.</div>
+        <div class="difficulty-bar">
+          <div class="diff-dots">
+            <div class="diff-dot on"></div>
+            <div class="diff-dot"></div>
+            <div class="diff-dot"></div>
+          </div>
+          <div class="diff-label">Easy</div>
+        </div>
+      </div>
+      <div class="task-card med" onclick="selectTask(2, this)">
+        <div class="task-num">TASK_02</div>
+        <div class="task-title">Invoice vs PO Discrepancy</div>
+        <div class="task-desc">Detect price, quantity, and tax discrepancies between invoice and purchase order documents.</div>
+        <div class="difficulty-bar">
+          <div class="diff-dots">
+            <div class="diff-dot on"></div>
+            <div class="diff-dot on"></div>
+            <div class="diff-dot"></div>
+          </div>
+          <div class="diff-label">Medium</div>
+        </div>
+      </div>
+      <div class="task-card hard" onclick="selectTask(3, this)">
+        <div class="task-num">TASK_03</div>
+        <div class="task-title">GDPR Policy Compliance</div>
+        <div class="task-desc">Audit 12 GDPR compliance clauses with severity classification: critical, major, or minor violations.</div>
+        <div class="difficulty-bar">
+          <div class="diff-dots">
+            <div class="diff-dot on"></div>
+            <div class="diff-dot on"></div>
+            <div class="diff-dot on"></div>
+          </div>
+          <div class="diff-label">Hard</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REWARD + ACTIONS -->
+  <div class="env-panel fade-in">
+    <div class="panel-box">
+      <div class="panel-header">
+        <div class="panel-title">Reward Structure</div>
+      </div>
+      <div class="panel-body">
+        <table class="reward-table">
+          <tr><td>Correct violation flagged</td><td class="pos">+0.15</td></tr>
+          <tr><td>Correct severity assigned</td><td class="pos">+0.05</td></tr>
+          <tr><td>Field correctly confirmed</td><td class="pos">+0.10</td></tr>
+          <tr><td>Clean submission bonus</td><td class="pos">+0.10</td></tr>
+          <tr><td>False positive flag</td><td class="neg">−0.10</td></tr>
+          <tr><td>Duplicate action</td><td class="neg">−0.05</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-header">
+        <div class="panel-title">Available Actions</div>
+      </div>
+      <div class="panel-body" style="font-family:var(--mono);font-size:12px;line-height:1.9;">
+        <div style="margin-bottom:10px;">
+          <span style="color:var(--accent)">flag_violation</span><br>
+          <span style="color:var(--text3);font-size:11px;">field, severity, reason</span>
+        </div>
+        <div style="margin-bottom:10px;">
+          <span style="color:var(--yellow)">mark_field_present</span><br>
+          <span style="color:var(--text3);font-size:11px;">field</span>
+        </div>
+        <div>
+          <span style="color:var(--green)">submit</span><br>
+          <span style="color:var(--text3);font-size:11px;">finalizes audit, triggers grader</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TERMINAL DEMO -->
+  <div class="fade-in">
+    <div class="section-head"><h2>Live Terminal</h2></div>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="dots">
+          <span class="dot-r"></span>
+          <span class="dot-y"></span>
+          <span class="dot-g"></span>
+        </div>
+        <div class="t-label">openenv-compliance — bash</div>
+      </div>
+      <div class="terminal-body" id="term-body">
+        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd" id="t-cmd1"></span></div>
+        <div id="t-out1"></div>
+        <div class="t-line" id="t-line2" style="display:none"><span class="t-prompt">$</span><span class="t-cmd" id="t-cmd2"></span></div>
+        <div id="t-out2"></div>
+        <div class="t-line" id="t-line3" style="display:none"><span class="t-prompt">$</span><span class="t-cursor" id="t-cursor"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CURRICULUM -->
+  <div class="fade-in">
+    <div class="section-head"><h2>Curriculum Learning — Adaptive Difficulty</h2></div>
+    <div class="curriculum-track">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:4px;">Agent advances automatically based on rolling 10-episode average. Target &gt;0.85 to promote, &lt;0.40 to demote.</div>
+      <div style="display:flex;gap:24px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);">
+          ROLLING AVG <span id="curr-avg" style="color:var(--yellow);">—</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);">
+          TOTAL EPISODES <span id="curr-episodes" style="color:var(--accent);">—</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);">
+          TREND <span id="curr-trend" style="color:var(--text3);">—</span>
+        </div>
+      </div>
+      <div class="levels">
+        <div class="level-node done">
+          <div class="level-circle">1</div>
+          <div class="level-name">Junior<br>Clerk</div>
+        </div>
+        <div class="level-node done">
+          <div class="level-circle">2</div>
+          <div class="level-name">Compliance<br>Analyst</div>
+        </div>
+        <div class="level-node current">
+          <div class="level-circle">3</div>
+          <div class="level-name">Senior<br>Officer</div>
+        </div>
+        <div class="level-node">
+          <div class="level-circle">4</div>
+          <div class="level-name">Compliance<br>Director</div>
+        </div>
+        <div class="level-node">
+          <div class="level-circle">5</div>
+          <div class="level-name">Regulatory<br>Expert</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MULTI-AGENT -->
+  <div class="fade-in">
+    <div class="section-head"><h2>Multi-Agent Architecture</h2></div>
+    <div class="agent-flow">
+      <div class="agent-boxes">
+        <div class="agent-box">
+          <div class="a-icon">🔍</div>
+          <div class="a-name">AUDITOR</div>
+          <div class="a-desc">Reads document, flags violations, marks present fields, submits audit report</div>
+        </div>
+        <div class="agent-arrow">
+          <div class="arrow-line"></div>
+          <div class="arrow-label">findings →</div>
+        </div>
+        <div class="agent-box">
+          <div class="a-icon">⚖️</div>
+          <div class="a-name">VERIFIER</div>
+          <div class="a-desc">Reviews each finding — APPROVE or REJECT. Catches hallucinations. Creates competitive pressure.</div>
+        </div>
+        <div class="agent-arrow">
+          <div class="arrow-line"></div>
+          <div class="arrow-label">← verdict</div>
+        </div>
+        <div class="agent-box">
+          <div class="a-icon">📊</div>
+          <div class="a-name">GRADER</div>
+          <div class="a-desc">Final score 0.0–1.0 based on coverage, accuracy, and severity correctness</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API ENDPOINTS -->
+  <div class="fade-in">
+    <div class="section-head"><h2>API Endpoints</h2></div>
+    <div class="endpoints">
+      <div class="endpoint-row">
+        <div class="method-tag method-post">POST</div>
+        <div class="ep-path">/reset</div>
+        <div class="ep-desc">Start new episode · params: task_id, seed</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-post">POST</div>
+        <div class="ep-path">/step</div>
+        <div class="ep-desc">Send action, receive observation + reward</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-get">GET</div>
+        <div class="ep-path">/state/{session_id}</div>
+        <div class="ep-desc">Current environment state</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-post">POST</div>
+        <div class="ep-path">/grader</div>
+        <div class="ep-desc">Final episode score 0.0–1.0</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-get">GET</div>
+        <div class="ep-path">/tasks</div>
+        <div class="ep-desc">Task list + action schemas</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-post">POST</div>
+        <div class="ep-path">/baseline</div>
+        <div class="ep-desc">Run built-in rule-based baseline agent</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-post">POST</div>
+        <div class="ep-path">/multi/reset</div>
+        <div class="ep-desc">Multi-agent episode start</div>
+      </div>
+      <div class="endpoint-row">
+        <div class="method-tag method-get">GET</div>
+        <div class="ep-path">/curriculum/stats</div>
+        <div class="ep-desc">Curriculum level progress &amp; history</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRY IT OUT -->
+  <div class="fade-in">
+    <div class="section-head"><h2>Try It Out — Live Environment</h2></div>
+    <div class="try-panel">
+      <div class="try-row">
+        <label>Task</label>
+        <select id="try-task">
+          <option value="1">Task 1 — Employment Contract</option>
+          <option value="2">Task 2 — Invoice vs PO</option>
+          <option value="3" selected>Task 3 — GDPR Policy</option>
+        </select>
+        <label>Seed</label>
+        <input type="number" id="try-seed" value="42" min="0" max="9999" style="width:80px;" />
+      </div>
+      <div class="try-row" style="gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btn-baseline" onclick="doBaseline()">⚡ Run Rule-Based Agent</button>
+        <button class="btn btn-primary" id="btn-llm" onclick="doLLMAgent()" style="background:linear-gradient(90deg,#7c3aed,#00d4ff);color:#000;font-weight:700;">🧠 Run Groq LLM Agent</button>
+        <button class="btn btn-secondary" id="btn-reset" onclick="doReset()">+ Manual Episode</button>
+      </div>
+
+      <div id="session-row" style="display:none;" class="try-row">
+        <label>Session</label>
+        <input type="text" id="session-display" readonly style="width:260px;color:var(--accent);" />
+        <button class="btn btn-secondary" onclick="doGrade()">🏆 Get Score</button>
+      </div>
+
+      <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;">Response</span>
+        <span id="status-indicator" style="font-family:var(--mono);font-size:10px;color:var(--text3);"></span>
+      </div>
+      <div class="try-output" id="try-out">
+        <span class="out-placeholder">// Click "Run Rule-Based Agent" or "Run Groq LLM Agent" to see a full live episode...</span>
+      </div>
+
+      <div class="score-display" id="score-display">
+        <div class="score-item">
+          <div class="s-label">Grader Score</div>
+          <div class="s-val" id="score-val">—</div>
+        </div>
+        <div class="score-item">
+          <div class="s-label">Steps Taken</div>
+          <div class="s-val" id="score-steps" style="color:var(--accent);">—</div>
+        </div>
+        <div class="score-item">
+          <div class="s-label">Cumul. Reward</div>
+          <div class="s-val" id="score-reward" style="color:var(--yellow);">—</div>
+        </div>
+        <div class="score-item">
+          <div class="s-label">Avg All Tasks</div>
+          <div class="s-val" id="score-avg" style="color:var(--green);">—</div>
+        </div>
+      </div>
+      <div id="agent-type-label" style="display:none;margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--text3);"></div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+const BASE = '';
+let sessionId = null;
+
+/** Parse JSON safely; surfaces HTML/text 5xx bodies as readable errors (not JSON.parse crashes). */
+async function readJsonResponse(r) {
+  const text = await r.text();
+  if (!r.ok) {
+    let msg = text.trim().slice(0, 800);
+    try {
+      const j = JSON.parse(text);
+      if (j.detail !== undefined) {
+        msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+      }
+    } catch (_) { /* keep msg as raw body */ }
+    throw new Error(`HTTP ${r.status}: ${msg}`);
+  }
+  const t = text.trim();
+  if (!t) return {};
+  try {
+    return JSON.parse(t);
+  } catch (_) {
+    throw new Error(`Expected JSON from server, got: ${t.slice(0, 120)}…`);
+  }
+}
+
+// ── Server Status — calls /info not / (root now serves HTML) ──────────────────
+async function fetchStatus() {
+  try {
+    const r = await fetch(BASE + '/health');
+    const d = await readJsonResponse(r);
+    document.getElementById('srv-status').textContent = d.status === 'healthy' ? 'Online' : d.status;
+    document.getElementById('srv-version').textContent = 'v1.0.0';
+    document.getElementById('srv-tasks').textContent = '1, 2, 3';
+  } catch(e) {
+    document.getElementById('srv-status').textContent = 'Offline';
+    document.getElementById('srv-version').textContent = '—';
+    document.getElementById('srv-tasks').textContent = '—';
+  }
+}
+fetchStatus();
+
+// ── Curriculum — polls /curriculum/stats every 8s ─────────────────────────────
+async function fetchCurriculum() {
+  try {
+    const r = await fetch(BASE + '/curriculum/stats');
+    if (!r.ok) return;
+    const d = await readJsonResponse(r);
+    const level = d.current_level || 1;
+    document.querySelectorAll('.level-node').forEach((node, i) => {
+      node.classList.remove('done', 'current');
+      if (i + 1 < level) node.classList.add('done');
+      else if (i + 1 === level) node.classList.add('current');
+    });
+    const avgEl = document.getElementById('curr-avg');
+    if (avgEl) avgEl.textContent = (d.rolling_average || 0).toFixed(3);
+    const epEl = document.getElementById('curr-episodes');
+    if (epEl) epEl.textContent = d.total_episodes || 0;
+    const trendEl = document.getElementById('curr-trend');
+    if (trendEl) {
+      const trendColors = { improving: 'var(--green)', declining: 'var(--red)', stable: 'var(--yellow)' };
+      trendEl.textContent = d.trend || '—';
+      trendEl.style.color = trendColors[d.trend] || 'var(--text3)';
+    }
+  } catch(e) {}
+}
+fetchCurriculum();
+setInterval(fetchCurriculum, 8000);
+
+// ── Task card selection ───────────────────────────────────
+function selectTask(num, el) {
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('try-task').value = num;
+}
+
+// ── JSON syntax highlight ─────────────────────────────────
+function highlight(obj) {
+  const s = JSON.stringify(obj, null, 2);
+  return s
+    .replace(/("([^"]+)")\s*:/g, '<span style="color:var(--accent)">$1</span>:')
+    .replace(/:\s*"([^"]*)"/g, ': <span style="color:#ffd580">"$1"</span>')
+    .replace(/:\s*(-?\d+\.?\d*)/g, ': <span style="color:#f78c6c">$1</span>')
+    .replace(/:\s*(true|false|null)/g, ': <span style="color:#c792ea">$1</span>');
+}
+
+function setOutput(obj, status) {
+  const el = document.getElementById('try-out');
+  document.getElementById('status-indicator').textContent = status || '';
+  if (typeof obj === 'string') { el.innerHTML = obj; return; }
+  el.innerHTML = `<pre style="margin:0">${highlight(obj)}</pre>`;
+}
+
+function setBusy(busy) {
+  ['btn-baseline','btn-llm','btn-reset'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = busy;
+  });
+}
+
+function showScores(d) {
+  const sd = document.getElementById('score-display');
+  sd.classList.add('visible');
+  // For baseline/llm results: pick first task score as representative
+  const taskScores = d.scores || {};
+  const firstScore = Object.values(taskScores)[0];
+  const firstDetail = Object.values(d.details || {})[0] || {};
+  document.getElementById('score-val').textContent =
+    firstScore !== undefined ? Number(firstScore).toFixed(4) : '—';
+  document.getElementById('score-steps').textContent =
+    firstDetail.steps_taken ?? '—';
+  document.getElementById('score-reward').textContent =
+    firstDetail.cumulative_reward !== undefined
+      ? Number(firstDetail.cumulative_reward).toFixed(3) : '—';
+  document.getElementById('score-avg').textContent =
+    d.average_score !== undefined ? Number(d.average_score).toFixed(4) : '—';
+
+  const lbl = document.getElementById('agent-type-label');
+  if (lbl && d.agent_type) {
+    lbl.style.display = 'block';
+    const groqOn = d.groq_available;
+    lbl.innerHTML = `AGENT: <span style="color:${groqOn ? 'var(--green)' : 'var(--yellow)'}">${d.agent_type}</span>`
+      + (groqOn ? ' <span style="color:var(--green)">● Groq API active</span>' : ' <span style="color:var(--yellow)">● Groq API not configured — using rule-based fallback</span>');
+  }
+  // refresh curriculum after scoring
+  fetchCurriculum();
+}
+
+// ── Run Rule-Based Baseline ────────────────────────────────
+async function doBaseline() {
+  const seed = Number(document.getElementById('try-seed').value || 42);
+  setBusy(true);
+  document.getElementById('status-indicator').textContent = '● Running rule-based agent…';
+  document.getElementById('score-display').classList.remove('visible');
+  document.getElementById('session-row').style.display = 'none';
+  try {
+    const qs = `seed_1=${seed}&seed_2=${seed}&seed_3=${seed}`;
+    const r = await fetch(`${BASE}/baseline?${qs}`, { method: 'POST' });
+    const d = await readJsonResponse(r);
+    setOutput(d, '● Rule-based complete');
+    showScores(d);
+  } catch(e) {
+    setOutput(`<span style="color:var(--red)">// Error: ${e.message}</span>`);
+  }
+  setBusy(false);
+}
+
+// ── Run Groq LLM Agent ─────────────────────────────────────
+async function doLLMAgent() {
+  const seed = Number(document.getElementById('try-seed').value || 42);
+  setBusy(true);
+  const statusEl = document.getElementById('status-indicator');
+  const t0 = Date.now();
+  const tick = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    statusEl.textContent = `● Groq LLM running… ${s}s (each task = many API calls; with Groq key, tasks run in parallel — often ~30–120s)`;
+  }, 1000);
+  statusEl.textContent = '● Groq LLM starting…';
+  document.getElementById('score-display').classList.remove('visible');
+  document.getElementById('session-row').style.display = 'none';
+  try {
+    const qs = `seed_1=${seed}&seed_2=${seed}&seed_3=${seed}`;
+    const r = await fetch(`${BASE}/baseline/llm?${qs}`, { method: 'POST' });
+    const d = await readJsonResponse(r);
+    const sec = d.meta && d.meta.elapsed_sec != null ? ` in ${d.meta.elapsed_sec}s` : '';
+    const model = d.meta && d.meta.model ? ` (${d.meta.model})` : '';
+    setOutput(d, (d.groq_available ? '● LLM agent complete' : '● Fallback to rule-based') + sec + model);
+    showScores(d);
+  } catch(e) {
+    setOutput(`<span style="color:var(--red)">// Error: ${e.message}</span>`);
+  } finally {
+    clearInterval(tick);
+    setBusy(false);
+  }
+}
+
+// ── Manual Episode Reset ──────────────────────────────────
+async function doReset() {
+  const task = document.getElementById('try-task').value;
+  const seed = document.getElementById('try-seed').value;
+  setBusy(true);
+  document.getElementById('status-indicator').textContent = '● Starting episode…';
+  document.getElementById('score-display').classList.remove('visible');
+  try {
+    const r = await fetch(`${BASE}/reset?task_id=${task}&seed=${seed}`, { method: 'POST' });
+    const d = await readJsonResponse(r);
+    sessionId = d.session_id;
+    document.getElementById('session-display').value = sessionId || '—';
+    document.getElementById('session-row').style.display = 'flex';
+    setOutput(d, '● 200 OK — send actions via /step then click Get Score');
+  } catch(e) {
+    setOutput(`<span style="color:var(--red)">// Error: ${e.message}</span>`);
+  }
+  setBusy(false);
+}
+
+// ── Manual Grade (only for manual sessions) ───────────────
+// Fetches grader + state in parallel so both score and cumulative_reward are real
+async function doGrade() {
+  if (!sessionId) return;
+  document.getElementById('status-indicator').textContent = '● Grading…';
+  try {
+    const preStateRes = await fetch(`${BASE}/state/${sessionId}`);
+    const preState = await readJsonResponse(preStateRes);
+
+    if ((preState.steps_taken || 0) === 0) {
+      setOutput(
+        { error: 'No manual actions recorded for this episode yet.' },
+        '● Manual mode requires at least one /step action before scoring'
+      );
+      return;
+    }
+
+    if (preState.task_id === 1) {
+      const assessed = (preState.confirmations?.length || 0) + (preState.missing_confirmed?.length || 0);
+      if (assessed < 6) {
+        setOutput(
+          { error: `Task 1 incomplete: assessed ${assessed}/6 fields` },
+          '● Complete all 6 fields first (mark_field_present / mark_field_missing)'
+        );
+        return;
+      }
+    }
+
+    if (!preState.done) {
+      const submitRes = await fetch(`${BASE}/step?session_id=${sessionId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action_type: 'submit'})
+      });
+      try {
+        await readJsonResponse(submitRes);
+      } catch (e) {
+        setOutput({ error: String(e.message) }, '● Submit failed');
+        return;
+      }
+    }
+
+    const [gr, sr] = await Promise.all([
+      fetch(`${BASE}/grader?session_id=${sessionId}`, { method: 'POST' }).then(readJsonResponse),
+      fetch(`${BASE}/state/${sessionId}`).then(readJsonResponse),
+    ]);
+    setOutput(gr, '● Score Ready');
+    const sd = document.getElementById('score-display');
+    sd.classList.add('visible');
+    document.getElementById('score-val').textContent =
+      gr.score !== undefined ? Number(gr.score).toFixed(4) : '—';
+    document.getElementById('score-steps').textContent =
+      gr.total_steps ?? sr.steps_taken ?? '—';
+    // cumulative_reward comes from STATE endpoint, not grader
+    document.getElementById('score-reward').textContent =
+      sr.cumulative_reward !== undefined
+        ? Number(sr.cumulative_reward).toFixed(3) : '—';
+    document.getElementById('score-avg').textContent = '—';
+    fetchCurriculum();
+  } catch(e) {
+    setOutput(`<span style="color:var(--red)">// Error: ${e.message}</span>`);
+  }
+}
+
+// ── Terminal Animation ─────────────────────────────────────
+function typeText(el, text, speed, done) {
+  let i = 0;
+  el.textContent = '';
+  const iv = setInterval(() => {
+    el.textContent += text[i++];
+    if (i >= text.length) { clearInterval(iv); if (done) done(); }
+  }, speed);
+}
+
+const CMD1 = `curl -X POST "${window.location.origin}/reset?task_id=3&seed=42"`;
+const OUT1 = {
+  session_id: "sess_abc123",
+  task_id: 3,
+  task_name: "Regulatory Policy Compliance Audit",
+  steps_taken: 0, max_steps: 30, cumulative_reward: 0.0,
+  available_actions: ["flag_violation","mark_field_present","submit"]
+};
+const CMD2 = `curl -X POST "${window.location.origin}/step?session_id=sess_abc123" -d '{"action_type":"flag_violation","field":"user_consent_mechanism","severity":"critical","reason":"No consent mechanism found"}'`;
+const OUT2 = {
+  reward: { value: 0.2, reason: "Correctly flagged missing clause: user_consent_mechanism with correct severity (critical)", cumulative: 0.2 },
+  observation: { steps_taken: 1, current_flags: ["user_consent_mechanism"], cumulative_reward: 0.2 },
+  done: false
+};
+
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    typeText(document.getElementById('t-cmd1'), CMD1, 14, () => {
+      setTimeout(() => {
+        document.getElementById('t-out1').innerHTML =
+          `<div class="t-out" style="color:#7ec8e3"><pre style="margin:0">${highlight(OUT1)}</pre></div>`;
+        setTimeout(() => {
+          document.getElementById('t-line2').style.display = 'flex';
+          typeText(document.getElementById('t-cmd2'), CMD2, 10, () => {
+            setTimeout(() => {
+              document.getElementById('t-out2').innerHTML =
+                `<div class="t-out" style="color:#7ec8e3"><pre style="margin:0">${highlight(OUT2)}</pre></div>`;
+              document.getElementById('t-line3').style.display = 'flex';
+            }, 400);
+          });
+        }, 600);
+      }, 300);
+    });
+  }, 800);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+openenv-core>=0.2.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.6
+pydantic>=2.9.2
+python-multipart>=0.0.12
+openai>=2.7.2
+requests>=2.32.3
+pyyaml>=6.0.2
+
+[dev]
+pytest>=8.0.0
+pytest-cov>=4.0.0

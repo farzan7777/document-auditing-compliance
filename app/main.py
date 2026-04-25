@@ -1,16 +1,17 @@
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from typing import Optional
-import os
 
 from app.models import (
     Action, StepResponse, Observation, GraderResponse,
-    TaskInfo, BaselineResponse
+    TaskInfo, BaselineResponse,
 )
-from app import env
-from app.tasks import task1_fields, task2_invoice, task3_policy
 
+# FastAPI instance must exist before importing `env` / tasks: their import graph is
+# large; any indirect import of `app.main` must see `app` already (avoids uvicorn
+# "Attribute app not found in module app.main" from a half-initialized module).
 app = FastAPI(
     title="OpenEnv: Document Compliance Auditing",
     description="""
@@ -28,21 +29,15 @@ for compliance violations across contracts, invoices, and privacy policies.
 - **Auditor Agent**: Reads documents and flags violations
 - **Verifier Agent**: Checks auditor findings for hallucinations
 - **Curriculum**: Auto-increases difficulty as agents improve
-
-### How to use (Single Agent)
-1. `POST /reset?task_id=1` — Start a new episode
-2. `POST /step` — Send actions with your `session_id`
-3. `GET /state/{session_id}` — Check current state
-4. `POST /grader` — Get your final score
-
-### How to use (Multi Agent)
-1. `POST /multi/reset?task_id=1` — Start episode with curriculum difficulty
-2. `POST /step` — Send auditor actions
-3. `POST /multi/grade` — Get both agent scores + verifier decisions
-4. `GET /curriculum/stats` — See difficulty progression
     """,
     version="2.0.0",
+    docs_url=None,
+    redoc_url=None,
 )
+
+# ── CRITICAL: Mount static BEFORE defining /docs route ────────────────────────
+# If mounted after, FastAPI's own router intercepts first → "Not Found"
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,12 +46,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app import env
+from app.tasks import task1_fields, task2_invoice, task3_policy
 
-# ─── Health Check ─────────────────────────────────────────────────────────────
-# UNCHANGED FROM ORIGINAL
 
-@app.get("/", tags=["Health"])
-def root():
+# ─── Custom Swagger UI ────────────────────────────────────────────────────────
+
+@app.get("/docs", response_class=HTMLResponse, include_in_schema=False)
+async def custom_docs():
+    with open("static/swagger-ui-custom.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+# ─── Dashboard UI ─────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def root():
+    with open("static/index.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+# ─── /info — used by dashboard status bar ─────────────────────────────────────
+# The root / now returns HTML, so we expose /info for the status bar fetch
+
+@app.get("/info", tags=["Health"])
+def info():
+    """
+    Returns environment metadata for the UI dashboard.
+    Called by index.html to populate the status bar (version, task count, etc.)
+    """
     return {
         "status": "ok",
         "name": "openenv-document-compliance",
@@ -66,23 +84,21 @@ def root():
     }
 
 
+# ─── Health Check ─────────────────────────────────────────────────────────────
+
 @app.get("/health", tags=["Health"])
 def health():
     return {"status": "healthy"}
 
 
 # ─── Core OpenEnv Endpoints ───────────────────────────────────────────────────
-# ALL UNCHANGED FROM ORIGINAL
 
 @app.post("/reset", response_model=dict, tags=["OpenEnv"])
 def reset(
     task_id: int = Query(..., ge=1, le=3, description="Task ID: 1 (easy), 2 (medium), 3 (hard)"),
     seed: Optional[int] = Query(None, description="Random seed for reproducibility"),
 ):
-    """
-    Start a new episode. Returns session_id and initial observation.
-    The agent must use session_id in all subsequent /step calls.
-    """
+    """Start a new episode. Returns session_id and initial observation."""
     try:
         session_id, observation = env.reset(task_id=task_id, seed=seed)
         return {
@@ -98,9 +114,7 @@ def step(
     session_id: str = Query(..., description="Session ID from /reset"),
     action: Action = None,
 ):
-    """
-    Send one action. Returns new observation, reward, done flag, and info.
-    """
+    """Send one action. Returns new observation, reward, done flag, and info."""
     if action is None:
         raise HTTPException(status_code=422, detail="Action body required")
     try:
@@ -121,14 +135,10 @@ def state(session_id: str):
 
 
 # ─── Grader Endpoint ──────────────────────────────────────────────────────────
-# UNCHANGED FROM ORIGINAL
 
 @app.post("/grader", response_model=GraderResponse, tags=["Grader"])
 def grader(session_id: str = Query(..., description="Session ID to grade")):
-    """
-    Run the grader on a completed episode. Returns score 0.0-1.0 with breakdown.
-    Can be called anytime (not just when done=True).
-    """
+    """Run the grader on a completed episode. Returns score 0.0-1.0 with breakdown."""
     try:
         return env.grade(session_id=session_id)
     except KeyError as e:
@@ -138,14 +148,10 @@ def grader(session_id: str = Query(..., description="Session ID to grade")):
 
 
 # ─── Tasks Endpoint ───────────────────────────────────────────────────────────
-# UNCHANGED FROM ORIGINAL
 
 @app.get("/tasks", tags=["Tasks"])
 def tasks():
-    """
-    List all tasks with their action schemas.
-    Required by OpenEnv spec for automated checkers.
-    """
+    """List all tasks with their action schemas. Required by OpenEnv spec."""
     return {
         "tasks": [
             task1_fields.get_task_info(),
@@ -156,46 +162,59 @@ def tasks():
 
 
 # ─── Baseline Endpoint ────────────────────────────────────────────────────────
-# UNCHANGED FROM ORIGINAL
 
 @app.post("/baseline", response_model=BaselineResponse, tags=["Baseline"])
-def baseline():
-    """
-    Trigger the baseline inference script server-side.
-    Runs a rule-based agent against all 3 tasks and returns scores.
-    This endpoint uses the internal baseline agent (no OpenAI API key required).
-    """
+def baseline(
+    seed_1: Optional[int] = Query(42, description="Seed for Task 1"),
+    seed_2: Optional[int] = Query(42, description="Seed for Task 2"),
+    seed_3: Optional[int] = Query(42, description="Seed for Task 3"),
+):
+    """Run rule-based baseline agent on all 3 tasks. No API key required."""
     from app.baseline_agent import run_baseline_internal
     try:
-        result = run_baseline_internal()
+        result = run_baseline_internal(seeds={1: seed_1, 2: seed_2, 3: seed_3})
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Baseline failed: {str(e)}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# NEW ENDPOINTS BELOW — Theme #1 + #4
-# Everything above this line is UNCHANGED from original
-# ═══════════════════════════════════════════════════════════════════════════════
+@app.post("/baseline/llm", tags=["Baseline"])
+def baseline_llm(
+    seed_1: Optional[int] = Query(42, description="Seed for Task 1"),
+    seed_2: Optional[int] = Query(42, description="Seed for Task 2"),
+    seed_3: Optional[int] = Query(42, description="Seed for Task 3"),
+):
+    """
+    **Groq LLM agent** — uses `GROQ_MODEL` (default: fast 8B) to audit documents step-by-step.
+
+    Requires GROQ_API_KEY environment variable set in HF Space secrets.
+    Falls back to rule-based agent automatically if key is not set.
+
+    This is the trained vs baseline comparison judges want to see:
+    - Rule-based baseline: keyword matching (~0.85 avg)
+    - LLM agent: semantic reasoning (scores higher, reasoning visible)
+
+    Each call records 3 episode scores to the curriculum system (Theme #4).
+    Set different seeds to get different documents and demonstrate generalisation.
+    """
+    from app.baseline_agent import run_llm_agent
+    try:
+        result = run_llm_agent(seeds={1: seed_1, 2: seed_2, 3: seed_3})
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM agent failed: {str(e)}")
 
 
-# ─── Curriculum Stats Endpoint (Theme #4) ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# MULTI-AGENT + CURRICULUM ENDPOINTS — Theme #1 + #4
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/curriculum/stats", tags=["Multi-Agent"])
 def curriculum_stats():
     """
-    NEW — Theme #4 Self Improvement.
-
-    Shows the curriculum system status.
-    Judges use this to see difficulty progression over time.
-
-    Returns:
-    - current_level: difficulty level 1-5
-    - level_name: human readable level name
-    - rolling_average: average score of recent episodes
-    - total_episodes: how many episodes have run
-    - trend: improving / stable / declining
-    - level_history: when and why difficulty changed
+    Theme #4 Self Improvement — current curriculum state.
+    Returns level 1-5, rolling average, trend, and full level history.
+    Judges call this to watch difficulty progression in real-time.
     """
     from app.curriculum import curriculum
     try:
@@ -204,22 +223,14 @@ def curriculum_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Multi-Agent Reset Endpoint (Theme #1 + #4) ───────────────────────────────
-
 @app.post("/multi/reset", tags=["Multi-Agent"])
 def multi_reset(
     task_id: int = Query(..., ge=1, le=3, description="Task ID: 1, 2, or 3"),
     seed: Optional[int] = Query(None, description="Random seed"),
 ):
     """
-    NEW — Theme #1 + #4 Multi-Agent Reset.
-
-    Same as /reset but also returns:
-    - difficulty_level: current curriculum level (1-5)
-    - level_name: human readable name
-    - curriculum_stats: full curriculum information
-
-    Use this instead of /reset to see the full multi-agent system.
+    Theme #1 + #4 Multi-Agent Reset.
+    Same as /reset but includes curriculum difficulty info.
     """
     try:
         from app.curriculum import curriculum
@@ -237,24 +248,11 @@ def multi_reset(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Multi-Agent Grade Endpoint (Theme #1) ────────────────────────────────────
-
 @app.post("/multi/grade", tags=["Multi-Agent"])
 def multi_grade(session_id: str = Query(..., description="Session ID to grade")):
     """
-    NEW — Theme #1 Multi-Agent Grading.
-
-    Returns full multi-agent results including:
-    - auditor_score: how well auditor found violations (0-1)
-    - verifier_score: how well verifier checked findings (0-1)
-    - combined_score: weighted combination (0-1)
-    - verifier_decisions: every APPROVE/REJECT with reasons
-    - verifier_summary: counts of approvals and rejections
-    - auditor_breakdown: detailed auditor scoring
-    - verifier_breakdown: detailed verifier scoring
-    - curriculum: current difficulty stats
-
-    This is the KEY endpoint for judges to see Theme #1 working.
+    Theme #1 Multi-Agent Grading.
+    Returns auditor score, verifier score, combined score, and all APPROVE/REJECT decisions.
     """
     try:
         return env.grade_multi(session_id=session_id)
@@ -264,17 +262,9 @@ def multi_grade(session_id: str = Query(..., description="Session ID to grade"))
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Curriculum Reset Endpoint (Theme #4 Demo) ────────────────────────────────
-
 @app.post("/curriculum/reset", tags=["Multi-Agent"])
 def curriculum_reset():
-    """
-    NEW — Reset curriculum back to Level 1.
-
-    Use this to reset the difficulty system for a fresh demo.
-    Useful for judges who want to watch the curriculum progress
-    from the beginning.
-    """
+    """Reset curriculum back to Level 1 for demo purposes."""
     from app.curriculum import curriculum
     try:
         curriculum.reset_for_demo()

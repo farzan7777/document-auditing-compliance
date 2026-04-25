@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+./inference.py
+openenv_compliance.egg-info/PKG-INFO
+openenv_compliance.egg-info/SOURCES.txt
+openenv_compliance.egg-info/dependency_links.txt
+openenv_compliance.egg-info/entry_points.txt
+openenv_compliance.egg-info/requires.txt
+openenv_compliance.egg-info/top_level.txt
+server/__init__.py
+server/app.py
