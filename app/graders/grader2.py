@@ -1,4 +1,5 @@
 from typing import Dict, List, Any
+from .score_transform import reward_to_score
 
 
 def grade(
@@ -20,7 +21,7 @@ def grade(
 
     if not true_violations:
         # No violations — agent should not flag anything
-        score = 0.999 if not agent_set else max(0.001, min(0.999, 1.0 - len(agent_set) * 0.2))
+        score = reward_to_score(1.0) if not agent_set else reward_to_score(1.0 - len(agent_set) * 0.2)
         return {
             "score": round(score, 4),
             "breakdown": {"no_violations": "Document was clean"},
@@ -40,7 +41,7 @@ def grade(
     else:
         f_score = (1.5 * precision * recall) / (0.5 * precision + recall)
 
-    final_score = max(0.001, min(0.999, f_score))
+    final_score = reward_to_score(f_score)
 
     breakdown = {}
     for v in true_violations:

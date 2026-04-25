@@ -1,4 +1,5 @@
 from typing import Dict, List, Any
+from .score_transform import reward_to_score
 
 SEVERITY_WEIGHTS = {
     "critical": 3.0,
@@ -52,7 +53,11 @@ def grade(
 
     base_score = (earned_weight / total_weight) if total_weight > 0 else 0.999
     fp_penalty = min(0.25, len(false_positives) * 0.05)
-    final_score = max(0.001, min(0.999, base_score + severity_bonus - fp_penalty))
+    # Cap severity_bonus so it never inflates score beyond base_score.
+    # Without this cap, a medium base (0.5) + large bonus (0.3) = 0.8,
+    # which is the reported score-inflation bug in task_3.
+    capped_bonus = min(severity_bonus, base_score * 0.1)
+    final_score = reward_to_score(base_score + capped_bonus - fp_penalty)
 
     feedback_parts = []
     if final_score >= 0.85:

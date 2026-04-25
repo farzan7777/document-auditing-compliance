@@ -1,4 +1,5 @@
 from typing import Dict, List, Any
+from .score_transform import reward_to_score
 
 
 def grade(
@@ -35,7 +36,7 @@ def grade(
     raw_score = correct / total_fields
     # Penalize false positives
     fp_penalty = min(0.2, false_positives * 0.05)
-    final_score = max(0.001, min(0.999, raw_score - fp_penalty))
+    final_score = reward_to_score(raw_score - fp_penalty)
 
     violations_found = len([f for f, p in ground_truth.items() if not p and f in agent_missing])
     violations_missed = len([f for f, p in ground_truth.items() if not p and f not in agent_missing])
