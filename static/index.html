@@ -1434,6 +1434,11 @@ const OUT2 = {
 };
 
 window.addEventListener('load', () => {
+  // Hackathon: Force backend reset on page refresh
+  fetch('/curriculum/reset', { method: 'POST' }).then(() => {
+    if (typeof fetchCurriculum === 'function') fetchCurriculum();
+  });
+
   setTimeout(() => {
     typeText(document.getElementById('t-cmd1'), CMD1, 14, () => {
       setTimeout(() => {
