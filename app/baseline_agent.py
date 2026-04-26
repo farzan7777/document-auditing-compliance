@@ -38,8 +38,17 @@ _LLM_CACHE_MAX_ENTRIES = 512
 _GROQ_RPC_LOCK = threading.Lock()
 
 
+def _llm_cache_enabled() -> bool:
+    return os.environ.get("GROQ_BASELINE_CACHE", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _groq_baseline_serialize_requests() -> bool:
-    """When true, only one Groq completion runs at a time (helps on_demand TPM limits)."""
+    """If true, only one Groq request happens at a time globally."""
     return os.environ.get("GROQ_BASELINE_SERIALIZE", "1").strip().lower() in (
         "1",
         "true",
@@ -51,46 +60,33 @@ def _groq_baseline_serialize_requests() -> bool:
 def _groq_baseline_max_retries() -> int:
     raw = os.environ.get("GROQ_BASELINE_MAX_RETRIES", "8").strip()
     try:
-        return max(1, min(16, int(raw)))
+        return max(1, min(20, int(raw)))
     except ValueError:
         return 8
 
 
-def _retry_after_seconds_from_rate_limit(exc: BaseException) -> Optional[float]:
-    """Parse Groq/OpenAI 429 hint: 'Please try again in 10.57s' or Retry-After header."""
-    text = str(exc)
-    m = re.search(r"try again in ([\d.]+)\s*s", text, re.IGNORECASE)
-    if m:
-        return max(0.1, min(120.0, float(m.group(1))))
-    resp = getattr(exc, "response", None)
-    if resp is not None:
-        headers = getattr(resp, "headers", None) or {}
-        for key in ("retry-after", "Retry-After"):
-            if key in headers:
-                try:
-                    return max(0.1, min(120.0, float(headers[key])))
-                except (TypeError, ValueError):
-                    pass
-    return None
-
-
 def _groq_sampling_defaults() -> Dict[str, Any]:
-    """Non-invasive sampling kwargs merged into every Groq chat completion."""
     return {
-        "temperature": 0,
-        "top_p": 1,
-        "frequency_penalty": 0,
-        "presence_penalty": 0,
+        "temperature": 0.1,
+        "top_p": 0.95,
+        "response_format": {"type": "json_object"},
     }
 
 
-def _llm_cache_enabled() -> bool:
-    return os.environ.get("GROQ_LLM_RESPONSE_CACHE", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+def _retry_after_seconds_from_rate_limit(err: RateLimitError) -> Optional[float]:
+    """Extends backoff logic if Groq explicitly tells us when to return."""
+    msg = str(err).lower()
+    if "retry-after" in msg or "try again in" in msg:
+        try:
+            # Simple heuristic for parsing Groq's error string
+            parts = msg.split()
+            for i, p in enumerate(parts):
+                if p in ("in", "after") and i + 1 < len(parts):
+                    val = parts[i + 1].replace("s", "").replace("ms", "")
+                    return float(val)
+        except (ValueError, IndexError):
+            pass
+    return None
 
 
 def _stable_cache_key(model: str, system_text: str, user_text: str, seed: Optional[int]) -> str:
@@ -642,11 +638,12 @@ def _task1_system_prompt() -> str:
 Return ONLY one JSON object with the next action.
 
 Allowed actions:
-- {"action_type":"mark_field_present","field":"<one of: party_a, party_b, effective_date, termination_clause, governing_law, signature_block>"}
-- {"action_type":"mark_field_missing","field":"<same field>","reason":"<short reason>"}
-- {"action_type":"submit"}
+- {"_thought":"<your step-by-step reasoning>","action_type":"mark_field_present","field":"<one of: party_a, party_b, effective_date, termination_clause, governing_law, signature_block>"}
+- {"_thought":"<your step-by-step reasoning>","action_type":"mark_field_missing","field":"<same field>","reason":"<short reason>"}
+- {"_thought":"<your reasoning>","action_type":"submit"}
 
 Rules:
+- You MUST always output `_thought` first before `action_type`.
 - Mark a field present only if it is clearly present in the document.
 - Mark a field missing only if it is clearly absent.
 - Do not repeat actions already reflected in current_confirmations/current_flags.
@@ -658,13 +655,14 @@ def _task2_system_prompt() -> str:
 Return ONLY one JSON object with the next action.
 
 Allowed actions:
-- {"action_type":"flag_violation","field":"qty_mismatch:<exact item name>","severity":"major","reason":"<short reason>"}
-- {"action_type":"flag_violation","field":"price_mismatch:<exact item name>","severity":"major","reason":"<short reason>"}
-- {"action_type":"flag_violation","field":"tax_rate_error","severity":"major","reason":"<short reason>"}
-- {"action_type":"flag_violation","field":"missing_po_reference","severity":"minor","reason":"<short reason>"}
-- {"action_type":"submit"}
+- {"_thought":"<your step-by-step math comparison>","action_type":"flag_violation","field":"qty_mismatch:<exact item name>","severity":"major","reason":"<short reason>"}
+- {"_thought":"<your step-by-step math comparison>","action_type":"flag_violation","field":"price_mismatch:<exact item name>","severity":"major","reason":"<short reason>"}
+- {"_thought":"<your reasoning>","action_type":"flag_violation","field":"tax_rate_error","severity":"major","reason":"<short reason>"}
+- {"_thought":"<your reasoning>","action_type":"flag_violation","field":"missing_po_reference","severity":"minor","reason":"<short reason>"}
+- {"_thought":"<your reasoning>","action_type":"submit"}
 
 Rules:
+- You MUST always output `_thought` first before `action_type`. Physically compare quantities and prices.
 - Use the exact item name from the document table after qty_mismatch: or price_mismatch:.
 - Only flag real violations.
 - Submit only after checking all item lines, tax, and PO reference."""
@@ -675,10 +673,11 @@ def _task3_system_prompt() -> str:
 Return ONLY one JSON object with the next action.
 
 Allowed actions:
-- {"action_type":"flag_violation","field":"<one of the 12 clause names>","severity":"critical|major|minor","reason":"<short reason>"}
-- {"action_type":"submit"}
+- {"_thought":"<your step-by-step reasoning>","action_type":"flag_violation","field":"<one of the 12 clause names>","severity":"critical|major|minor","reason":"<short reason>"}
+- {"_thought":"<your reasoning>","action_type":"submit"}
 
 Rules:
+- You MUST always output `_thought` first before `action_type`.
 - Flag only missing clauses.
 - Use the correct severity for each missing clause.
 - Submit only after checking all 12 required clauses."""
@@ -725,7 +724,6 @@ def run_baseline_internal(seeds: Optional[Dict[int, int]] = None) -> Dict[str, A
     for task_id, seed in seeds.items():
         session_id, observation = env.reset(task_id=task_id, seed=seed)
         score = _run_rule_based_for_task(task_id, session_id, observation)
-        curriculum.record_score(score)
 
         scores[f"task_{task_id}"] = score
         state = env.state(session_id)
@@ -739,6 +737,7 @@ def run_baseline_internal(seeds: Optional[Dict[int, int]] = None) -> Dict[str, A
         }
 
     average = round(sum(scores.values()) / len(scores), 4)
+    curriculum.record_score(average)
     return {
         "scores": scores,
         "details": details,
@@ -850,7 +849,6 @@ def run_llm_agent(seeds: Optional[Dict[int, int]] = None) -> Dict[str, Any]:
 
     for tid in (1, 2, 3):
         row = rows_by_tid[tid]
-        curriculum.record_score(row["score"])
         scores[row["task_key"]] = row["score"]
         details[row["task_key"]] = row["details"]
         if row.get("error"):
@@ -858,6 +856,7 @@ def run_llm_agent(seeds: Optional[Dict[int, int]] = None) -> Dict[str, Any]:
             errors[row["task_key"]] = row["error"]
 
     average = round(sum(scores.values()) / len(scores), 4)
+    curriculum.record_score(average)
     elapsed = round(time.perf_counter() - t0, 2)
     result = {
         "scores": scores,
