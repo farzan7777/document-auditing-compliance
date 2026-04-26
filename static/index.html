@@ -149,9 +149,51 @@
     flex-wrap: wrap;
   }
 
+  /* === CYBERPUNK 3D HARDENING === */
+  .wrap {
+    perspective: 1200px;
+    z-index: 1;
+  }
+
+  .stat-chip, .task-card, .panel-box, .curriculum-track, .agent-flow, .try-panel {
+    background: rgba(15, 19, 24, 0.7) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(0, 212, 255, 0.15) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(0, 212, 255, 0.05) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    transform-style: preserve-3d;
+  }
+
+  /* Floating Animation */
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotateX(0); }
+    50% { transform: translateY(-5px) rotateX(1deg); }
+  }
+
+  .stat-chip { animation: float 6s ease-in-out infinite; }
+  .task-card { animation: float 8s ease-in-out infinite alternate; }
+
+  /* 3D Tilt on Hover */
+  .task-card:hover, .stat-chip:hover {
+    transform: translateY(-8px) rotateX(4deg) rotateY(-2deg) scale(1.02) !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 212, 255, 0.2) !important;
+    z-index: 10;
+  }
+
+  /* Neon Gradients */
+  .task-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--red), var(--orange));
+    opacity: 0.3;
+    transition: opacity 0.3s;
+  }
+  .task-card:hover::after { opacity: 1; }
+
   .stat-chip {
-    background: var(--surface);
-    border: 1px solid var(--border);
     padding: 10px 18px;
     display: flex;
     align-items: center;
@@ -225,11 +267,8 @@
   }
 
   .task-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
     padding: 20px;
     cursor: pointer;
-    transition: all 0.2s;
     position: relative;
     overflow: hidden;
   }
